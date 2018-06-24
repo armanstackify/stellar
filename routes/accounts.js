@@ -30,7 +30,7 @@ router.post('/create', function(req, res, next) {
       json: true
     }, function(error, response, body) {
       if (error || response.statusCode !== 200) {
-        console.error('ERROR!', error || body);
+        console.log('ERROR!', error || body);
         res.json({'body': error || body});
       }
       else {
@@ -47,7 +47,7 @@ router.post('/create', function(req, res, next) {
             res.json({'accountResult': account});
           })
           .catch(function(error){
-            console.error('Error!', error.response.data);
+            console.log('Error!', error.response.data);
             res.json({'error': error.response.data});
           });
       }
@@ -105,10 +105,10 @@ router.post('/create', function(req, res, next) {
         });
     } catch(error) {
       if (error.response && error.response.data) {
-        console.error('Error:', error.response.data);
+        console.log('Error:', error.response.data);
         res.json({'error': error.response.data});
       } else {
-        console.error('Error:', error);
+        console.log('Error:', error);
         res.json({'error': error});
       }
     }
@@ -124,7 +124,7 @@ router.post('/create2', function(req, res, next) {
   Body:
   {
   "sourcePublicKey":"GDIOKP5XAWOH37RKSRZV4RJFFIFSQVXDQ3O42X7FTLD3PMSWN63O2RIU",
-  "sourceSecretKey":"SBDKTHVUJNTWTOIKVAB735ANCN4AXANMCCJRS3SYRGPBDKK5FR6EV7ZZ",
+  "sourceSecretKey":"SA5KZEB2XU5PKNNIPN65GC5AKSDKIVN227PPTSHGTHBMZNSY533F7HUK",
   "receiverPublicKey":"GBC4Q6SVT3U5FU27PPBUEPT7IEZ53MRNXOQLKFAOY67YI6XME5CW6FDH",
   "startingBalance": "100.0000000"
   }
@@ -134,17 +134,34 @@ router.post('/create2', function(req, res, next) {
   console.log('CREATE ACCOUNT');
   console.log('Use Public Network');
   try {
+    if (!req.body.sourcePublicKey || !req.body.sourcePublicKey.trim()) {
+      res.status(400).json({'error': 'Source Public Key is required.'});
+      return;
+    }
+    if (!req.body.sourceSecretKey || !req.body.sourceSecretKey.trim()) {
+      res.status(400).json({'error': 'Source Secret Key is required.'});
+      return;
+    }
+    if (!req.body.receiverPublicKey || !req.body.receiverPublicKey.trim()) {
+      res.status(400).json({'error': 'Receiver Public Key is required.'});
+      return;
+    }
+    if (!req.body.startingBalance || !req.body.startingBalance.trim()) {
+      res.status(400).json({'error': 'Starting balance is required.'});
+      return;
+    }
     var server = new StellarSdk.Server(config.stellarServer);
-    var sourcePublicKey = req.body.sourcePublicKey;
-    var sourceSecretKey = req.body.sourceSecretKey;
-    var receiverPublicKey = req.body.receiverPublicKey;
+    var sourcePublicKey = req.body.sourcePublicKey.trim();
+    var sourceSecretKey = req.body.sourceSecretKey.trim();
+    var receiverPublicKey = req.body.receiverPublicKey.trim();
     var startingBalance = req.body.startingBalance || '100.0000000';
     console.log('sourcePublicKey:', sourcePublicKey);
-    console.log('sourceSecretKey:', sourceSecretKey);
+    // console.log('sourceSecretKey:', sourceSecretKey);
     console.log('receiverPublicKey:', receiverPublicKey);
     console.log('startingBalance:', startingBalance);
     // Keys for issuing account
     var issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+
     server.loadAccount(sourcePublicKey)
       .then(function(account) { // validate the account
         console.log('account:', account);
@@ -166,16 +183,17 @@ router.post('/create2', function(req, res, next) {
         if (error.response && error.response.data) {
           res.json({'error': error.response.data});
         } else {
+          console.log('Error #1:', error);
           res.json({'error': error});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      console.error('Error:', error.response.data);
+      console.log('Error:', error.response.data);
       res.json({'error': error.response.data});
     } else {
-      console.error('Error:', error);
-      res.json({'error': error});
+      console.log('Error #2:', error);
+      res.json({'error': error.toString()});
     }
   }
 });
@@ -198,7 +216,7 @@ router.get('/:publicKey', function(req, res, next) {
       res.json({'accountResult': account});
     })
     .catch(function(error){
-      console.error('Error!', error.response.data);
+      console.log('Error!', error.response.data);
       res.json({'error': error.response.data});
     });
 });

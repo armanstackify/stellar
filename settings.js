@@ -1,15 +1,15 @@
-var useTestNetwork = true;
+var stellarNetwork = "test";
 
 var config;
-if (process.env.useTestNetwork == "true") {
+if (process.env.stellarNetwork == "test") {
   config = {
     stellarServer: 'https://horizon-testnet.stellar.org',
-    useTestNetwork: true
+    stellarNetwork: "test"
   };
 } else {
   config = {
     stellarServer: 'https://horizon.stellar.org',
-    useTestNetwork: false
+    stellarNetwork: 'public'
   };
 }
 

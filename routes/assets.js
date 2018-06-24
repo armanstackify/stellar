@@ -3,7 +3,7 @@ var router = express.Router();
 var config = require('../settings');
 var StellarSdk = require('stellar-sdk');
 
-if (config.useTestNetwork) {
+if (config.stellarNetwork === "test") {
   StellarSdk.Network.useTestNetwork();
 } else {
   StellarSdk.Network.usePublicNetwork();
@@ -11,6 +11,7 @@ if (config.useTestNetwork) {
 
 /*
 Example data:
+Method: POST
 Headers: Content-type: application/json
 Body: {"assetCode":"AstroDollars","issuerId":"SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4"}
 */
@@ -35,6 +36,7 @@ router.post('/create', function(req, res, next) {
 /*
 @parameters: Secret key
 Example data:
+Method: POST
 Headers: Content-type: application/json
 Body: {"issuerId":"SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4"}
 */
@@ -88,60 +90,72 @@ router.post('/issue1', function(req, res, next) {
 router.post('/issue', function(req, res, next) {
   console.log('============================================================================');
   console.log('ISSUE ASSET');
-  var issueKeyParam = req.body.issuerId;
-  var receiverKeyParam = req.body.receiverId;
+  var issuerIdParam = req.body.issuerId;
+  var receiverIdParam = req.body.receiverId;
   var assetCodeParam = req.body.assetCode || 'AstroDollar';
   var assetAmtParam = req.body.amount || '1.0000000';
+  try {
+    // Keys for accounts to issue and receive the new asset
+    // var issuingKeys = StellarSdk.Keypair
+    //   .fromSecret('SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4');
+    // var receivingKeys = StellarSdk.Keypair
+    //   .fromSecret('SDSAVCRE5JRAI7UFAVLE5IMIZRD6N6WOJUWKY4GFN34LOBEEUS4W2T2D');
+    var issuingKeys = StellarSdk.Keypair.fromSecret(issuerIdParam);
+    var receivingKeys = StellarSdk.Keypair.fromSecret(receiverIdParam);
 
-  // Keys for accounts to issue and receive the new asset
-  var issuingKeys = StellarSdk.Keypair
-    .fromSecret('SCZANGBA5YHTNYVVV4C3U252E2B6P6F5T3U6MM63WBSBZATAQI3EBTQ4');
-  var receivingKeys = StellarSdk.Keypair
-    .fromSecret('SDSAVCRE5JRAI7UFAVLE5IMIZRD6N6WOJUWKY4GFN34LOBEEUS4W2T2D');
+    var issuingPublicKey = issuingKeys.publicKey();
+    var receiverPublicKey  = receivingKeys.publicKey();
+    console.log('receiverPublicKey:', receiverPublicKey);
+    console.log('issuerPublicKey:', issuingPublicKey);
 
-  var issuingPublicKey = issuingKeys.publicKey();
-  var receivingPublicKey  = receivingKeys.publicKey();
-
-  // Create an object to represent the new asset
-  var assetObj = new StellarSdk.Asset(assetCodeParam, issuingPublicKey);
-  var server = new StellarSdk.Server(config.stellarServer);
-  // First, the receiving account must trust the asset
-  server.loadAccount(receivingPublicKey)
-    .then(function(receiver) {
-      var transaction = new StellarSdk.TransactionBuilder(receiver)
-        // The `changeTrust` operation creates (or alters) a trustline
-        // The `limit` parameter below is optional
-        .addOperation(StellarSdk.Operation.changeTrust({
-          asset: assetObj
-        }))
-        .build();
-      transaction.sign(receivingKeys);
-      return server.submitTransaction(transaction);
-    })
-    // Second, the issuing account actually sends a payment using the asset
-    .then(function() {
-      return server.loadAccount(issuingPublicKey)
-    })
-    .then(function(issuer) {
-      var transaction = new StellarSdk.TransactionBuilder(issuer)
-        .addOperation(StellarSdk.Operation.payment({
-          destination: receivingPublicKey,
-          asset: assetObj,
-          amount: assetAmtParam
-        }))
-        .build();
-      transaction.sign(issuingKeys);
-      return server.submitTransaction(transaction);
-    })
-    .then(function(transactionResult){
-      console.log('transactionResult:',transactionResult);
-      res.json({'transactionResult': transactionResult});
-    })
-    .catch(function(error) {
-      console.log('error:', error);
-      res.json({'error': error});
-    });
-
+    // Create an object to represent the new asset
+    var assetObj = new StellarSdk.Asset(assetCodeParam, issuingPublicKey);
+    var server = new StellarSdk.Server(config.stellarServer);
+    // First, the receiving account must trust the asset
+    server.loadAccount(receiverPublicKey)
+      .then(function(receiver) { // validate the account
+        var transaction = new StellarSdk.TransactionBuilder(receiver)
+          // The `changeTrust` operation creates (or alters) a trustline
+          // The `limit` parameter is optional
+          .addOperation(StellarSdk.Operation.changeTrust({
+            asset: assetObj
+          }))
+          .build();
+        transaction.sign(receivingKeys);
+        return server.submitTransaction(transaction);
+      })
+      // Second, the issuing account actually sends a payment using the asset
+      .then(function() {
+        return server.loadAccount(issuingPublicKey)
+      })
+      .then(function(issuer) {
+        var transaction = new StellarSdk.TransactionBuilder(issuer)
+          .addOperation(StellarSdk.Operation.payment({
+            destination: receiverPublicKey,
+            asset: assetObj,
+            amount: assetAmtParam
+          }))
+          .build();
+        transaction.sign(issuingKeys);
+        return server.submitTransaction(transaction);
+      })
+      .then(function(transactionResult){
+        console.log('transactionResult:',transactionResult);
+        res.json({'transactionResult': transactionResult});
+      })
+      .catch(function(error) {
+        console.log('error:', error);
+        res.json({'error': error});
+      });
+  } catch(error) {
+    if (error.response && error.response.data) {
+      console.log('Error:', error.response.data);
+      res.json({'error': error.response.data});
+    } else {
+      console.log('Error:', error);
+      res.json({'error': error.toString()});
+    }
+  }
 });
 
 router.post('/moveAssets', function(req, res, next) {

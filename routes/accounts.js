@@ -11,44 +11,81 @@ if (config.stellarNetwork === "test") {
 console.log('config variables:');
 console.log(config);
 
+/*
+{"startingBalance": "2.0000000","issuerId":"SDZ5PTQM625ZL6A6OFE467WWLGSU6UK6F4ZZOP5EJPNZOER2RKBEKKX2"}
+*/
 router.post('/create', function(req, res, next) {
   var request = require('request');
   console.log('============================================================================');
   console.log('CREATE ACCOUNT');
-
+  var issuingKeys;
   if (config.stellarNetwork === "test") {
     console.log('Use Test Network');
     // create a completely new and unique pair of keys
     // see more about KeyPair objects: https://stellar.github.io/js-stellar-sdk/Keypair.html
     var pair = StellarSdk.Keypair.random();
-    var publicKey = pair.publicKey();
-    console.log('secretKey:', pair.secret());
-    console.log('publicKey:', publicKey);
+    var sourceSecretKey = pair.secret();
+    var sourcePublicKey = pair.publicKey();
+    if (req.body.issuerId) {
+      sourceSecretKey = req.body.issuerId;
+      issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+      sourcePublicKey = issuingKeys.publicKey();
+    }
+    var pair2 = StellarSdk.Keypair.random();
+    var receiverPublicKey = pair2.publicKey();
+    var receiverSecretKey = pair2.secret();
+    console.log('sourceSecretKey:', sourceSecretKey);
+    console.log('sourcePublicKey:', sourcePublicKey);
+    // Now, lets funded the account using the friendbot
     request.get({
       url: 'https://friendbot.stellar.org',
-      qs: { addr: publicKey },
+      qs: { addr: sourcePublicKey },
       json: true
     }, function(error, response, body) {
       if (error || response.statusCode !== 200) {
-        console.log('ERROR!', error || body);
+        console.log('Friendbot error:', error || body);
         res.json({'body': error || body});
       }
       else {
         console.log('SUCCESS! You have a new account :)\n', body);
         var server = new StellarSdk.Server(config.stellarServer);
-        // the JS SDK uses promises for most actions, such as retrieving an account
-        server.loadAccount(publicKey)
+        server.loadAccount(sourcePublicKey)
           .then(function(account) { // validate the account
-            // console.log('account:',account);
-            console.log('Balances for account: ' + publicKey);
+            console.log('Balances for master account: ' + sourcePublicKey);
             account.balances.forEach(function(balance) {
               console.log('Type:', balance.asset_type, ', Balance:', balance.balance);
             });
-            res.json({'accountResult': account});
+            var startingBalance = req.body.startingBalance || '1.0000000';
+            var issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+            console.log('receiverPublicKey:', receiverPublicKey);
+            console.log('receiverSecretKey:', receiverSecretKey);
+            console.log('startingBalance:', startingBalance);
+            var transaction = new StellarSdk.TransactionBuilder(account)
+              .addOperation(StellarSdk.Operation.createAccount({ // create account operation
+                destination: receiverPublicKey,
+                startingBalance: startingBalance // in XLM e.g, 100.0000000 (7 decimal places)
+              }))
+            .build();
+            transaction.sign(issuingKeys);
+            var createAccountResult = server.submitTransaction(transaction);
+            return createAccountResult;
+          })
+          .then(function(createAccountResult){
+            // console.log('createAccountResult:',createAccountResult);
+            res.json({
+              'createAccountResult': createAccountResult, 
+              'receiverPublicKey': receiverPublicKey,
+              'receiverSecretKey': receiverSecretKey
+            });
           })
           .catch(function(error){
-            console.log('Error!', error.response.data);
-            res.json({'error': error.response.data});
+            if (error.response && error.response.data) {
+              console.log('Error #1:', error.response.data);
+              res.status(400).json({'error': error.response.data});
+            } else {
+              console.log('Error #1:', error);
+              res.status(400).json({'error': error.toString()});
+            }
           });
       }
     });
@@ -60,115 +97,83 @@ router.post('/create', function(req, res, next) {
     Headers: Content-type: application/json
     Body:
     {
-    "sourcePublicKey":"GDIOKP5XAWOH37RKSRZV4RJFFIFSQVXDQ3O42X7FTLD3PMSWN63O2RIU",
-    "sourceSecretKey":"SBDKTHVUJNTWTOIKVAB735ANCN4AXANMCCJRS3SYRGPBDKK5FR6EV7ZZ",
     "receiverPublicKey":"GBC4Q6SVT3U5FU27PPBUEPT7IEZ53MRNXOQLKFAOY67YI6XME5CW6FDH",
     "startingBalance": "100.0000000"
     }
     */
-    console.log('Use Public Network');
-    try {
-      var server = new StellarSdk.Server(config.stellarServer);
-      var sourcePublicKey = req.body.sourcePublicKey;
-      var sourceSecretKey = req.body.sourceSecretKey;
-      var receiverPublicKey = req.body.receiverPublicKey;
-      var startingBalance = req.body.startingBalance || '100.0000000';
-      console.log('sourcePublicKey:', sourcePublicKey);
-      console.log('sourceSecretKey:', sourceSecretKey);
-      console.log('receiverPublicKey:', receiverPublicKey);
-      console.log('startingBalance:', startingBalance);
-      // Keys for issuing account
-      var issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
-      server.loadAccount(sourcePublicKey)
-        .then(function(account) {  // validate the account
-          console.log('account:', account);
-          var transaction = new StellarSdk.TransactionBuilder(account)
-            .addOperation(StellarSdk.Operation.createAccount({
-              destination: receiverPublicKey,
-              startingBalance: startingBalance // in XLM
-            }))
-          .build();
-          transaction.sign(issuingKeys);
-          var createAccountResult = server.submitTransaction(transaction);
-          return createAccountResult;
-        })
-        .then(function(createAccountResult){
-          console.log('createAccountResult:',createAccountResult);
-          res.json({'createAccountResult': createAccountResult});
-        })
-        .catch(function(error){
-          if (error.response && error.response.data) {
-            res.json({'error': error.response.data});
-          } else {
-            res.json({'error': error});
-          }
-        });
-    } catch(error) {
-      if (error.response && error.response.data) {
-        console.log('Error:', error.response.data);
-        res.json({'error': error.response.data});
-      } else {
-        console.log('Error:', error);
-        res.json({'error': error});
-      }
-    }
+
   }
 });
 
 router.post('/create2', function(req, res, next) {
-  /*
-  @parameters: Public key
-  Example data:
-  Method: POST
-  Headers: Content-type: application/json
-  Body:
-  {
-  "sourcePublicKey":"GDIOKP5XAWOH37RKSRZV4RJFFIFSQVXDQ3O42X7FTLD3PMSWN63O2RIU",
-  "sourceSecretKey":"SA5KZEB2XU5PKNNIPN65GC5AKSDKIVN227PPTSHGTHBMZNSY533F7HUK",
-  "receiverPublicKey":"GBC4Q6SVT3U5FU27PPBUEPT7IEZ53MRNXOQLKFAOY67YI6XME5CW6FDH",
-  "startingBalance": "100.0000000"
-  }
-  */
+/*
+@parameters: Public key
+Example data:
+Method: POST
+Headers: Content-type: application/json
+Body:
+{
+"receiverPublicKey":"GBC4Q6SVT3U5FU27PPBUEPT7IEZ53MRNXOQLKFAOY67YI6XME5CW6FDH",
+"startingBalance": "100.0000000"
+}
+*/
   var request = require('request');
   console.log('============================================================================');
   console.log('CREATE ACCOUNT');
   console.log('Use Public Network');
   try {
-    if (!req.body.sourcePublicKey || !req.body.sourcePublicKey.trim()) {
-      res.status(400).json({'error': 'Source Public Key is required.'});
-      return;
+    // create a completely new and unique pair of keys
+    // see more about KeyPair objects: https://stellar.github.io/js-stellar-sdk/Keypair.html
+    var pair = StellarSdk.Keypair.random();
+    var sourcePublicKey = config.sourcePublicKey;
+    var sourceSecretKey = config.sourceSecretKey;
+    // Keys for issuing account
+    var issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+    if (req.body.issuerId) {
+      sourceSecretKey = req.body.issuerId;
+      issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
+      sourcePublicKey = issuingKeys.publicKey();
     }
-    if (!req.body.sourceSecretKey || !req.body.sourceSecretKey.trim()) {
-      res.status(400).json({'error': 'Source Secret Key is required.'});
-      return;
-    }
-    if (!req.body.receiverPublicKey || !req.body.receiverPublicKey.trim()) {
-      res.status(400).json({'error': 'Receiver Public Key is required.'});
-      return;
-    }
+    // if (!req.body.sourcePublicKey || !req.body.sourcePublicKey.trim()) {
+    //   res.status(400).json({'error': 'Source Public Key is required.'});
+    //   return;
+    // }
+    // if (!req.body.sourceSecretKey || !req.body.sourceSecretKey.trim()) {
+    //   res.status(400).json({'error': 'Source Secret Key is required.'});
+    //   return;
+    // }
+    // if (!req.body.receiverPublicKey || !req.body.receiverPublicKey.trim()) {
+    //   res.status(400).json({'error': 'Receiver Public Key is required.'});
+    //   return;
+    // }
     if (!req.body.startingBalance || !req.body.startingBalance.trim()) {
       res.status(400).json({'error': 'Starting balance is required.'});
       return;
     }
     var server = new StellarSdk.Server(config.stellarServer);
-    var sourcePublicKey = req.body.sourcePublicKey.trim();
-    var sourceSecretKey = req.body.sourceSecretKey.trim();
-    var receiverPublicKey = req.body.receiverPublicKey.trim();
-    var startingBalance = req.body.startingBalance || '100.0000000';
+    var receiverPublicKey = pair.publicKey();
+    var receiverSecretKey = pair.secret();
+
+    if (req.body.receiverPublicKey) {
+      receiverPublicKey = req.body.receiverPublicKey.trim();
+      receiverSecretKey = '';
+    }
+    var startingBalance = req.body.startingBalance || '2.0000000';
     console.log('sourcePublicKey:', sourcePublicKey);
-    // console.log('sourceSecretKey:', sourceSecretKey);
     console.log('receiverPublicKey:', receiverPublicKey);
+    console.log('receiverSecretKey:', receiverSecretKey);
     console.log('startingBalance:', startingBalance);
-    // Keys for issuing account
-    var issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
 
     server.loadAccount(sourcePublicKey)
       .then(function(account) { // validate the account
-        console.log('account:', account);
+        console.log('Balances for master account: ' + sourcePublicKey);
+        account.balances.forEach(function(balance) {
+          console.log('Type:', balance.asset_type, ', Balance:', balance.balance);
+        });
         var transaction = new StellarSdk.TransactionBuilder(account)
-          .addOperation(StellarSdk.Operation.createAccount({
+          .addOperation(StellarSdk.Operation.createAccount({ // create account operation
             destination: receiverPublicKey,
-            startingBalance: startingBalance // in XLM
+            startingBalance: startingBalance // in XLM e.g, 100.0000000 (7 decimal places)
           }))
         .build();
         transaction.sign(issuingKeys);
@@ -176,24 +181,29 @@ router.post('/create2', function(req, res, next) {
         return createAccountResult;
       })
       .then(function(createAccountResult){
-        console.log('createAccountResult:',createAccountResult);
-        res.json({'createAccountResult': createAccountResult});
+        // console.log('createAccountResult:',createAccountResult);
+        res.json({
+          'createAccountResult': createAccountResult, 
+          'receiverPublicKey': receiverPublicKey,
+          'receiverSecretKey': receiverSecretKey
+        });
       })
       .catch(function(error){
         if (error.response && error.response.data) {
-          res.json({'error': error.response.data});
+          console.log('Error #1:', error.response.data);
+          res.status(400).json({'error': error.response.data});
         } else {
           console.log('Error #1:', error);
-          res.json({'error': error});
+          res.status(400).json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      console.log('Error:', error.response.data);
-      res.json({'error': error.response.data});
+      console.log('Error #1:', error.response.data);
+      res.status(400).json({'error': error.response.data});
     } else {
-      console.log('Error #2:', error);
-      res.json({'error': error.toString()});
+      console.log('Error #1:', error);
+      res.status(400).json({'error': error.toString()});
     }
   }
 });
@@ -216,8 +226,13 @@ router.get('/:publicKey', function(req, res, next) {
       res.json({'accountResult': account});
     })
     .catch(function(error){
-      console.log('Error!', error.response.data);
-      res.json({'error': error.response.data});
+      if (error.response && error.response.data) {
+        console.log('Error #1:', error.response.data);
+        res.status(400).json({'error': error.response.data});
+      } else {
+        console.log('Error #2:', error);
+        res.status(400).json({'error': error.toString()});
+      }
     });
 });
 

@@ -21,15 +21,17 @@ if (process.env.stellarNetwork == "test") {
   config = {
     stellarServer: 'https://horizon-testnet.stellar.org',
     stellarNetwork: 'test',
-    sourcePublicKey: 'GAGF3RVJ2RGIENPZ7TWQKH4M4ZBMYXQRPD5542EPKNAG4EOLEFCZ4IPL',
-    sourceSecretKey: 'SA7DW25HNGU2EQVOF7NBVKJTURS6Y4TTRPIJ3ZMOR7XYHYCHVBI7OEUT'
+    sourcePublicKey: 'GAEYK7EAZCKAFCMIJLOBBHEACGYGSGRKF6CC3DZHKQFOGJLMX4TKAZWH',
+    sourceSecretKey: 'SDXPEKCSEOBZQX7FPJQBEKWXI4RQBCLN3ZM3TQMFKBUW6RIRBX7MJSUQ',
+    startingBalance: '5.0000000'
   };
 } else {
   config = {
     stellarServer: 'https://horizon.stellar.org',
     stellarNetwork: 'public',
-    sourcePublicKey: 'GAGF3RVJ2RGIENPZ7TWQKH4M4ZBMYXQRPD5542EPKNAG4EOLEFCZ4IPL',
-    sourceSecretKey: 'SA7DW25HNGU2EQVOF7NBVKJTURS6Y4TTRPIJ3ZMOR7XYHYCHVBI7OEUT'
+    sourcePublicKey: 'GAEYK7EAZCKAFCMIJLOBBHEACGYGSGRKF6CC3DZHKQFOGJLMX4TKAZWH',
+    sourceSecretKey: 'SDXPEKCSEOBZQX7FPJQBEKWXI4RQBCLN3ZM3TQMFKBUW6RIRBX7MJSUQ',
+    startingBalance: '5.0000000'
   };
 }
 

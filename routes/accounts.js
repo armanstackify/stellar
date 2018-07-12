@@ -53,9 +53,9 @@ router.post('/create', function(req, res, next) {
         console.log('SUCCESS! You have a new account :)\n', body);
         server.loadAccount(sourcePublicKey)
           .then(function(account) { // validate the account
-            console.log('Balances for issuing account: ' + sourcePublicKey);
+            console.log('Balances for source account: ' + sourcePublicKey);
             account.balances.forEach(function(balance) {
-              console.log('Type:',balance.asset_type,', Balance:',balance.balance);
+              console.log('Code:',balance.asset_code,'Type:',balance.asset_type,',Balance:',balance.balance);
             });
             var startingBalance = req.body.startingBalance || defaultBalance;
             console.log('receiverPublicKey:', receiverPublicKey);
@@ -111,7 +111,7 @@ router.post('/create', function(req, res, next) {
 
       server.loadAccount(sourcePublicKey)
         .then(function(account) { // validate the account
-          console.log('Balances for issuing account: ' + sourcePublicKey);
+          console.log('Balances for source account: ' + sourcePublicKey);
           account.balances.forEach(function(balance) {
             console.log('Code:',balance.asset_code,'Type:',balance.asset_type,',Balance:',balance.balance);
           });
@@ -189,10 +189,10 @@ router.post('/create2', function(req, res, next) {
     var pair = StellarSdk.Keypair.random();
     var sourcePublicKey = config.sourcePublicKey;
     var sourceSecretKey = config.sourceSecretKey;
-    // Keys for issuing account
+    // Keys for source account
     var issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
-    if (req.body.issuerId && (req.body.issuerId.trim() !== "")) {
-      sourceSecretKey = req.body.issuerId.trim();
+    if (req.body.sourceId && (req.body.sourceId.trim() !== "")) {
+      sourceSecretKey = req.body.sourceId.trim();
       issuingKeys = StellarSdk.Keypair.fromSecret(sourceSecretKey);
       sourcePublicKey = issuingKeys.publicKey();
     }

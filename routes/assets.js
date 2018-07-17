@@ -2,7 +2,7 @@ var express = require('express');
 var router = express.Router();
 var config = require('../settings');
 var StellarSdk = require('stellar-sdk');
-
+var logger = require('../winston');
 var server = new StellarSdk.Server(config.stellarServer);
 
 if (config.stellarNetwork === "test") {
@@ -10,6 +10,7 @@ if (config.stellarNetwork === "test") {
 } else {
   StellarSdk.Network.usePublicNetwork();
 }
+
 
 /*
 Asset creation
@@ -26,8 +27,8 @@ issuerId - Secret key of the issuing account that issued the asset.
 receiverId - Secret key of the distribution account that will hold the asset.
 */
 router.post('/create', function(req, res, next) {
-  console.log('============================================================================');
-  console.log('CREATE ASSET');
+  logger.log('debug', '============================================================================');
+  logger.log('debug', 'CREATE ASSET');
   var issuingPublicKey;
 
   try {
@@ -49,10 +50,10 @@ router.post('/create', function(req, res, next) {
     issuingPublicKey = issuingKeys.publicKey();
     var assetObj = new StellarSdk.Asset(req.body.assetCode.trim(), issuingPublicKey); // creating an Asset object
     var receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
-    console.log('issuer PublicKey:', issuingPublicKey);
-    console.log('receiver PublicKey:', receivingKeys.publicKey());
-    console.log('getAssetType:',assetObj.getAssetType());
-    console.log('assetObj:',assetObj);
+    logger.log('debug', 'issuer PublicKey: ' + issuingPublicKey);
+    logger.log('debug', 'receiver PublicKey: ' + receivingKeys.publicKey());
+    logger.log('debug', 'getAssetType: ' + assetObj.getAssetType());
+    logger.log('debug', 'assetObj: ' + JSON.stringify(assetObj));
     
     server.accounts()
       .accountId(issuingPublicKey)
@@ -71,42 +72,42 @@ router.post('/create', function(req, res, next) {
             return server.submitTransaction(transaction);
           })
           .then(function(transactionResult){
-            console.log('transactionResult:',transactionResult);
+            logger.log('debug', 'Successfully created asset '+req.body.assetCode.trim());
             res.json({'transactionResult': transactionResult});
           })
           .catch(function(error) {
             if (error.response && error.response.data) {
-              console.log('Error in loadAccount(receiver):', error.response.data);
+              logger.log('debug', 'Error in loadAccount(receiver): ' + JSON.stringify(error.response.data));
               if (error.response.status == 404) {
                 res.json({'error': "Recipient Account doesn't exist or inactivated."});
               } else {
                 res.json({'error': error.response.data});
               }
             } else {
-              console.log('Error in loadAccount(receiver):', error);
+              logger.log('debug', 'Error in loadAccount(receiver): ' + error.toString());
               res.json({'error': error.toString()});
             }
           });
       })
       .catch(function(error) {
         if (error.response && error.response.data) {
-          console.log('Error in loadAccount(issuer):', error.response.data);
+          logger.log('debug', 'Error in loadAccount(issuer): ' + JSON.stringify(error.response.data));
           if (error.response.status == 404) {
             res.json({'error': "Issuing Account doesn't exist or inactivated."});
           } else {
             res.json({'error': error.response.data});
           }
         } else {
-          console.log('Error in loadAccount(issuer):', error);
+          logger.log('debug', 'Error in loadAccount(issuer): ' + error.toString());
           res.json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      console.log('Error:', error.response.data);
+      logger.log('debug', 'Error A: ' + JSON.stringify(error.response.data));
       res.status(400).json({'error': error.response.data});
     } else {
-      console.log('Error:', error);
+      logger.log('debug', 'Error B: ' + error.toString());
       res.status(400).json({'error': error.toString()});
     }
   }
@@ -131,8 +132,8 @@ amount - Amount of the aforementioned asset to send.
 
 // issuing an asset
 router.post('/issue', function(req, res, next) {
-  console.log('============================================================================');
-  console.log('ISSUE ASSET');
+  logger.log('debug', '============================================================================');
+  logger.log('debug', 'ISSUE ASSET');
   var issuingKeys;  // issuing account
   var receivingKeys;  // distribution account that holds any assets
   var issuingPublicKey;
@@ -168,8 +169,8 @@ router.post('/issue', function(req, res, next) {
     issuingPublicKey = issuingKeys.publicKey();
     receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
     receiverPublicKey = receivingKeys.publicKey();
-    console.log('issuer PublicKey:', issuingPublicKey);
-    console.log('receiver PublicKey:', receiverPublicKey);
+    logger.log('debug', 'issuer PublicKey: ' + issuingPublicKey);
+    logger.log('debug', 'receiver PublicKey: ' + receiverPublicKey);
     var assetObj = new StellarSdk.Asset(assetCodeParam, issuingPublicKey); // Create an object to represent the new asset
     var objErr;
 
@@ -185,10 +186,10 @@ router.post('/issue', function(req, res, next) {
                      balance.asset_issuer === issuingPublicKey;
             });
             objErr = {};
-            console.log('Is trusted:',trusted);
+            logger.log('debug', 'Is trusted: ' + trusted);
             if (trusted) {
               receiver.balances.forEach(function(balance) {
-                console.log('Code:',balance.asset_code,'Type:',balance.asset_type,',Balance:',balance.balance);
+                logger.log('debug', 'Code: '+balance.asset_code+', Type: '+balance.asset_type+', Balance: '+balance.balance);
                 if (balance.asset_code === assetCodeParam) {
                   if (balance.balance >= balance.limit || (assetAmtParam > balance.limit) ) {
                     objErr.error = 'Balance limit exceed';
@@ -231,145 +232,85 @@ router.post('/issue', function(req, res, next) {
             }
           })
           .then(function(transactionResult){
-            console.log('transactionResult:',transactionResult);
             res.json({'transactionResult': transactionResult});
           })
           .catch(function(error) {
             if (objErr && objErr.error) {
+              logger.log('debug', 'objErr: ' + objErr.error);
               res.status(400).json({'error': objErr.error});
             }
             if (error.response && error.response.data) {
-              console.log('Error in loadAccount(receiver):', error.response.data);
+              logger.log('debug', 'Error in loadAccount(receiverPublicKey) from #assets/issue: ' + JSON.stringify(error.response.data));
               res.status(400).json({'error': error.response.data});
             } else {
-              console.log('Error in loadAccount(receiver):', error);
+              logger.log('debug', 'Error in loadAccount(receiverPublicKey) from #assets/issue: ' + error.toString());
               res.status(400).json({'error': error.toString()});
             }
           });
       })
       .catch(function (error) {
         if (error.response && error.response.data) {
-          console.log('Error in loadAccount(issuer):', error.response.data);
+          logger.log('debug', 'Error in loadAccount(issuingPublicKey) from #assets/issue: ' + JSON.stringify(error.response.data));
           if (error.response.status == 404) {
             res.json({'error': "Issuing Account doesn't exist or inactivated."});
           } else {
             res.json({'error': error.response.data});
           }
         } else {
-          console.log('Error in loadAccount(issuer):', error);
+          logger.log('debug', 'Error in loadAccount(issuingPublicKey) from #assets/issue: ' + error.toString());
           res.json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      console.log('Error A:', error.response.data);
+      logger.log('debug', 'Error A from #assets/issue: ' + JSON.stringify(error.response.data));
       res.status(400).json({'error': error.response.data});
     } else {
-      console.log('Error B:', error);
+      logger.log('debug', 'Error B from #assets/issue: ' +  error.toString());
       res.status(400).json({'error': error.toString()});
     }
   }
 });
 
-// sending lumens to another account
-router.post('/send', function(req, res, next){
-  console.log('============================================================================');
-  console.log('SEND ASSET');
-  // the issuer account that created the asset
-  var issuingPublicKey = config.sourcePublicKey;
-  var issuerSecretKey = config.sourceSecretKey;
-  var receiverIdParam = req.body.receiverId;
-  var assetAmtParam = req.body.amount.trim(); // e.g., '1.0000000'
-  var issuingKeys = StellarSdk.Keypair.fromSecret(issuerSecretKey);
-  if (req.body.distributorId && (req.body.distributorId.trim() !== "")) {
-    issuerSecretKey = req.body.distributorId.trim();
-    issuingKeys = StellarSdk.Keypair.fromSecret(issuerSecretKey);
-    issuingPublicKey = issuingKeys.publicKey();
-  }
-  if (req.body.receiverId && (req.body.receiverId.trim() !== "")) {
-    receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
-    receivingPublicKey = receivingKeys.publicKey();
-  }
-  var assetCodeParam = req.body.assetCode.trim();
-  // Transaction will hold a built transaction we can resubmit if the result is unknown.
-  var transaction;
-  console.log('receiverPublicKey:', receivingPublicKey);
-  console.log('issuerPublicKey:', issuingPublicKey);
-  // First, check to make sure that the destination account exists.
-  server.loadAccount(receivingPublicKey)
-    // If the account is not found, surface a nicer error message for logging.
-    .catch(StellarSdk.NotFoundError, function (error) {
-      res.status(400).json({'error': 'The destination account does not exist!'});
-      throw new Error('The destination account does not exist!');
-    })
-    // If there was no error, load up-to-date information on your account.
-    .then(function() {
-      return server.loadAccount(issuingPublicKey);
-    })
-    .then(function(sourceAccount) {
-      console.log('Balances for distribution account: ' + issuingPublicKey);
-      sourceAccount.balances.forEach(function(balance) {
-        console.log('Code:',balance.asset_code,'Type:',balance.asset_type,',Balance:',balance.balance);
-      });
-
-      var trusted = sourceAccount.balances.some(function(balance) { // lets validate the account
-        return balance.asset_code === assetCodeParam &&
-               balance.asset_issuer === issuingPublicKey;
-      });
-      objErr = {};
-      console.log('Is trusted:',trusted);
-      // Create an object to represent the new asset
-      var assetObj = new StellarSdk.Asset(assetCodeParam, issuingPublicKey);
-      // Start building the transaction.
-      transaction = new StellarSdk.TransactionBuilder(sourceAccount)
-        .addOperation(StellarSdk.Operation.payment({
-          destination: receivingPublicKey,
-          // Because Stellar allows transaction in many currencies, you must
-          // specify the asset type. The special "native" asset represents Lumens.
-          asset: assetObj,
-          amount: assetAmtParam
-        }))
-        // A memo allows you to add your own metadata to a transaction. It's
-        // optional and does not affect how Stellar treats the transaction.
-        .addMemo(StellarSdk.Memo.text('Test Transaction'))
-        .build();
-      // Sign the transaction to prove you are actually the person sending it.
-      transaction.sign(issuingKeys);
-      // And finally, send it off to Stellar!
-      return server.submitTransaction(transaction);
-    })
-    .then(function(transactionResult) {
-      console.log('Success! Results:', transactionResult);
-      res.json({'transactionResult': transactionResult});
-    })
-    .catch(function(error) {
-      if (error.response && error.response.data) {
-        console.log('Error A:', JSON.stringify(error.response.data));
-        res.status(400).json({'error': error.response.data});
-      } else {
-        console.log('Error B:', JSON.stringify(error));
-        res.status(400).json({'error': error.toString()});
-      }
-    });
-});
-
-// distribute asset
-router.post('/send1', function(req, res, next) {
-  console.log('============================================================================');
-  console.log('ISSUE ASSET');
-  var issuingKeys;  // issuing account
-  var receivingKeys;  // distribution account that holds any assets
-  var issuingPublicKey;
+// transfer asset from one account to another account
+/*
+Example data:
+Method: POST
+Headers: Content-type: application/json
+Body:
+{
+"assetCode":"ABC",
+"amount": "1",
+"issuerId":"SCSGGRV4M24KGJJ4GZYFJKJZADHO3632MY6ZF33A6FLRKPYKZ6ANCMPY",
+"from":"SCQSL3RUV3BLN7JXXFIQDE5F2PMVVLFUY3546HY3HG6LTUYHBAI7F32C",
+"to":"SDXPFHOZ7INZP2PKJ6GV6SOKNWZZ55HDBUUL3NSQMI7HICYMFXG2OST7" 
+}
+issuerId – Secret key of the issuing account that issued the asset.
+assetCode - Asset to send to the receiver account(a short identifier of 1–12 alphanumeric).
+amount - Amount of the aforementioned asset to send.
+to - Account address(Secret key) that will receive the asset.
+from - Account address(Distributor account Secret key) that will send the asset to another account.
+*/
+router.post('/transfer', function(req, res, next) {
+  logger.log('debug', '============================================================================');
+  logger.log('debug', 'TRANSFER ASSET');
+  var issuerPublicKey;
   var issuerSecretKey;
-  var receiverPublicKey;
-
+  var distributorSecretKey;
+  var distributorPublicKey;
+  var receivingPublicKey;
   try {
-    if (!req.body.distributorId || !req.body.distributorId.trim()) {
-      res.status(400).json({'error': 'distributor ID is required.'});
+    var assetAmtParam = req.body.amount.trim();
+    if (!req.body.issuerId || !req.body.issuerId.trim()) {
+      res.status(400).json({'error': 'Asset Issuer ID is required.'});
       return;
     }
-    if (!req.body.receiverId || !req.body.receiverId.trim()) {
-      res.status(400).json({'error': 'Receiver ID is required.'});
+    if (!req.body.from || !req.body.from.trim()) {
+      res.status(400).json({'error': 'From is required.'});
+      return;
+    }
+    if (!req.body.to || !req.body.to.trim()) {
+      res.status(400).json({'error': 'To is required.'});
       return;
     }
     if (!req.body.assetCode || !req.body.assetCode.trim()) {
@@ -384,220 +325,87 @@ router.post('/send1', function(req, res, next) {
       res.status(400).json({'error': 'Amount is required.'});
       return;
     }
-
+    if (req.body.issuerId && (req.body.issuerId.trim() !== "")) {
+      issuerSecretKey = req.body.issuerId.trim();
+      issuingKey = StellarSdk.Keypair.fromSecret(issuerSecretKey);
+      issuerPublicKey = issuingKey.publicKey();
+    }
+    if (req.body.from && (req.body.from.trim() !== "")) {
+      distributorSecretKey = req.body.from.trim();
+      distributorKeys = StellarSdk.Keypair.fromSecret(distributorSecretKey);
+      distributorPublicKey = distributorKeys.publicKey();
+    }
+    if (req.body.to && (req.body.to.trim() !== "")) {
+      receivingKeys = StellarSdk.Keypair.fromSecret(req.body.to.trim());
+      receivingPublicKey = receivingKeys.publicKey();
+    }
     var assetCodeParam = req.body.assetCode.trim();
-    var assetAmtParam = req.body.amount.trim();
-    // Keys for accounts to issue and receive the asset
-    issuingKeys = StellarSdk.Keypair.fromSecret(req.body.distributorId.trim()); // the issuer account that created the asset
-    issuingPublicKey = issuingKeys.publicKey();
-    receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
-    receiverPublicKey = receivingKeys.publicKey();
-    console.log('issuer PublicKey:', issuingPublicKey);
-    console.log('receiver PublicKey:', receiverPublicKey);
-    var assetObj = new StellarSdk.Asset(assetCodeParam, issuingPublicKey); // Create an object to represent the new asset
-    var objErr;
-
-    server.accounts()
-      .accountId(receiverPublicKey)
-      .call()
-      .then(function(accountResult) {
-        // First, check to make sure that the destination account exists.
-        server.loadAccount(issuingPublicKey)
-          .then(function(sourceAccount) {
-            var trusted = sourceAccount.balances.some(function(balance) { // lets validate the account
-              return balance.asset_code === assetCodeParam &&
-                     balance.asset_issuer === issuingPublicKey;
-            });
-            objErr = {};
-            console.log('Is trusted:',trusted);
-              // sourceAccount.balances.forEach(function(balance) {
-              //   console.log('Code:',balance.asset_code,'Type:',balance.asset_type,',Balance:',balance.balance);
-              //   if (balance.asset_code === assetCodeParam) {
-              //     if (balance.balance >= balance.limit || (assetAmtParam > balance.limit) ) {
-              //       objErr.error = 'Balance limit exceed';
-              //       return objErr;
-              //     }
-
-              //   }
-              // });
-
-            var transaction = new StellarSdk.TransactionBuilder(sourceAccount)
-                .addOperation(StellarSdk.Operation.payment({
-                  destination: receiverPublicKey,
-                  // Because Stellar allows transaction in many currencies, you must
-                  // specify the asset type. The special "native" asset represents Lumens.
-                  asset: assetObj,
-                  amount: assetAmtParam
-                }))
-              .build();
-            transaction.sign(issuingKeys);
-            return server.submitTransaction(transaction);
-
-          })
-          .then(function(transactionResult){
-            console.log('transactionResult:',transactionResult);
-            res.json({'transactionResult': transactionResult});
-          })
-          .catch(function(error) {
-            if (objErr && objErr.error) {
-              res.status(400).json({'error': objErr.error});
-            } else if (error.response && error.response.data) {
-              console.log('Error in loadAccount(receiver):', error.response.data);
-              res.status(400).json({'error': error.response.data});
-            } else {
-              console.log('Error in loadAccount(receiver):', error);
-              res.status(400).json({'error': error.toString()});
-            }
-          });
+    var transaction;
+    logger.log('debug', 'distributorPublicKey: ' + distributorPublicKey);
+    logger.log('debug', 'receiverPublicKey: ' + receivingPublicKey);
+    // First, check to make sure that the destination account exists.
+    server.loadAccount(receivingPublicKey)
+      // If the account is not found, surface a nicer error message for logging.
+      .catch(StellarSdk.NotFoundError, function (error) {
+        logger.log('debug', 'The destination account ' + receivingPublicKey + ' does not exist!');
+        res.status(400).json({'error': 'The destination account does not exist!'});
+        throw new Error('The destination account does not exist!');
       })
-      .catch(function (error) {
+      // If there was no error, load up-to-date information on your account.
+      .then(function() {
+        return server.loadAccount(distributorPublicKey);
+      })
+      .then(function(distributorAccount) {
+        logger.log('debug','Balances for distributor account: ' + distributorPublicKey);
+        distributorAccount.balances.forEach(function(balance) {
+          logger.log('debug', 'Code:'+balance.asset_code+', Type:'+balance.asset_type+', Balance:'+balance.balance);
+        });
+        var trusted = distributorAccount.balances.some(function(balance) { // lets validate the account
+          return balance.asset_code === assetCodeParam &&
+                 balance.asset_issuer === issuerPublicKey;
+        });
+        objErr = {};
+        logger.log('debug', 'Is trusted: ' + trusted);
+        // Create an object to represent the new asset
+        var assetObj = new StellarSdk.Asset(assetCodeParam, issuerPublicKey);
+        // Start building the transaction.
+        transaction = new StellarSdk.TransactionBuilder(distributorAccount)
+          .addOperation(StellarSdk.Operation.payment({
+            destination: receivingPublicKey,
+            // Because Stellar allows transaction in many currencies, you must
+            // specify the asset type. The special "native" asset represents Lumens.
+            asset: assetObj,
+            amount: assetAmtParam
+          }))
+          // A memo allows you to add your own metadata to a transaction. It's
+          // optional and does not affect how Stellar treats the transaction.
+          // .addMemo(StellarSdk.Memo.text('Test Transaction'))
+          .build();
+        // Sign the transaction to prove you are actually the person sending it.
+        transaction.sign(distributorKeys);
+        return server.submitTransaction(transaction);
+      })
+      .then(function(transactionResult) {
+        res.json({'transactionResult': transactionResult});
+      })
+      .catch(function(error) {
         if (error.response && error.response.data) {
-          console.log('Error in loadAccount(issuer):', error.response.data);
-          if (error.response.status == 404) {
-            res.json({'error': "Destination Account doesn't exist or inactivated."});
-          } else {
-            res.json({'error': error.response.data});
-          }
+          logger.log('debug', 'Error A from #assets/transfer: ' + JSON.stringify(error.response.data));
+          res.status(400).json({'error': error.response.data});
         } else {
-          console.log('Error in loadAccount(issuer):', error);
-          res.json({'error': error.toString()});
+          logger.log('debug', 'Error B from #assets/transfer: ' + error.toString());
+          res.status(400).json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      console.log('Error:', error.response.data);
+      logger.log('debug', 'Error C from #assets/transfer: ' + JSON.stringify(error.response.data));
       res.status(400).json({'error': error.response.data});
     } else {
-      console.log('Error:', error);
+      logger.log('debug', 'Error D from #assets/transfer: ' +  error.toString());
       res.status(400).json({'error': error.toString()});
     }
   }
-});
-
-// send custom-asset to another account
-/*
-Example data:
-Method: POST
-Headers: Content-type: application/json
-Body:
-{
-"assetCode":"ABC",
-"amount": "1.0",
-"issuerId":"GCX63KJNYZLL6AOXQ37EAV5Q2D2RD4XINS52CVF55FSJASJSJL7QSBTJ",
-"distributorId":"SCQSL3RUV3BLN7JXXFIQDE5F2PMVVLFUY3546HY3HG6LTUYHBAI7F32C",
-"receiverId":"SDXPFHOZ7INZP2PKJ6GV6SOKNWZZ55HDBUUL3NSQMI7HICYMFXG2OST7" 
-}
-issuerId – Secret key of the issuing account that issued the asset.
-assetCode - Asset to send to the receiver account(a short identifier of 1–12 alphanumeric).
-amount - Amount of the aforementioned asset to send.
-receiverId - Account address that receives the payment(Secret Key).
-distributorId - Account address that send the asset.
-*/
-router.post('/send2', function(req, res, next) {
-  console.log('============================================================================');
-  console.log('SEND ASSET');
-  // the issuer account that created the asset
-  var distributorKey = config.sourcePublicKey;
-  var distributorSecretKey = config.sourceSecretKey;
-  var receiverIdParam = req.body.receiverId;
-  var assetAmtParam = req.body.amount.trim(); // e.g., '1.0000000'
-  var distributorKeys = StellarSdk.Keypair.fromSecret(distributorSecretKey);
-
-  if (!req.body.issuerId || !req.body.issuerId.trim()) {
-    res.status(400).json({'error': 'Asset Issuer ID is required.'});
-    return;
-  }
-  if (!req.body.distributorId || !req.body.distributorId.trim()) {
-    res.status(400).json({'error': 'Distributor ID is required.'});
-    return;
-  }
-  if (!req.body.receiverId || !req.body.receiverId.trim()) {
-    res.status(400).json({'error': 'Receiver ID is required.'});
-    return;
-  }
-  if (!req.body.assetCode || !req.body.assetCode.trim()) {
-    res.status(400).json({'error': 'Asset Code is required.'});
-    return;
-  }
-  if (req.body.amount && (typeof (req.body.amount))=="number") {
-    res.status(400).json({'error': 'Amount must be in string format with 7 decimal places.'});
-    return;
-  }
-  if (!req.body.amount || !req.body.amount.trim()) {
-    res.status(400).json({'error': 'Amount is required.'});
-    return;
-  }
-  if (req.body.issuerId && (req.body.issuerId.trim() !== "")) {
-    var issuerPublicKey = req.body.issuerId.trim();
-  }
-  if (req.body.distributorId && (req.body.distributorId.trim() !== "")) {
-    distributorSecretKey = req.body.distributorId.trim();
-    distributorKeys = StellarSdk.Keypair.fromSecret(distributorSecretKey);
-    distributorKey = distributorKeys.publicKey();
-  }
-  if (req.body.receiverId && (req.body.receiverId.trim() !== "")) {
-    receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
-    receivingPublicKey = receivingKeys.publicKey();
-  }
-  var assetCodeParam = req.body.assetCode.trim();
-  // Transaction will hold a built transaction we can resubmit if the result is unknown.
-  var transaction;
-  console.log('receiverPublicKey:', receivingPublicKey);
-  console.log('distributorKey:', distributorKey);
-  // First, check to make sure that the destination account exists.
-  server.loadAccount(receivingPublicKey)
-    // If the account is not found, surface a nicer error message for logging.
-    .catch(StellarSdk.NotFoundError, function (error) {
-      res.status(400).json({'error': 'The destination account does not exist!'});
-      throw new Error('The destination account does not exist!');
-    })
-    // If there was no error, load up-to-date information on your account.
-    .then(function() {
-      return server.loadAccount(distributorKey);
-    })
-    .then(function(distributorAccount) {
-      // console.log('Balances for distribution account: ' + distributorKey);
-      // distributorAccount.balances.forEach(function(balance) {
-      //   console.log('Code:',balance.asset_code,'Type:',balance.asset_type,',Balance:',balance.balance);
-      // });
-      var trusted = distributorAccount.balances.some(function(balance) { // lets validate the account
-        return balance.asset_code === assetCodeParam &&
-               balance.asset_issuer === issuerPublicKey;
-      });
-      objErr = {};
-      console.log('Is trusted:',trusted);
-      // Create an object to represent the new asset
-      var assetObj = new StellarSdk.Asset(assetCodeParam, issuerPublicKey);
-      // Start building the transaction.
-      transaction = new StellarSdk.TransactionBuilder(distributorAccount)
-        .addOperation(StellarSdk.Operation.payment({
-          destination: receivingPublicKey,
-          // Because Stellar allows transaction in many currencies, you must
-          // specify the asset type. The special "native" asset represents Lumens.
-          asset: assetObj,
-          amount: assetAmtParam
-        }))
-        // A memo allows you to add your own metadata to a transaction. It's
-        // optional and does not affect how Stellar treats the transaction.
-        .addMemo(StellarSdk.Memo.text('Test Transaction'))
-        .build();
-      // Sign the transaction to prove you are actually the person sending it.
-      transaction.sign(distributorKeys);
-      return server.submitTransaction(transaction);
-    })
-    .then(function(transactionResult) {
-      console.log('Success! Results:', transactionResult);
-      res.json({'transactionResult': transactionResult});
-    })
-    .catch(function(error) {
-      if (error.response && error.response.data) {
-        console.log('Error A:', error.response.data);
-        res.status(400).json({'error': error.response.data});
-      } else {
-        console.log('Error B:', error);
-        res.status(400).json({'error': error.toString()});
-      }
-    });
 });
 
 module.exports = router;

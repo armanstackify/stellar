@@ -2,6 +2,7 @@ var express = require('express');
 var router = express.Router();
 var config = require('../settings');
 var StellarSdk = require('stellar-sdk');
+var _ = require('underscore');
 var logger = require('../winston');
 var server = new StellarSdk.Server(config.stellarServer);
 
@@ -10,7 +11,6 @@ if (config.stellarNetwork === "test") {
 } else {
   StellarSdk.Network.usePublicNetwork();
 }
-
 
 /*
 Asset creation
@@ -22,13 +22,13 @@ Body:
 "receiverId":"SBALK4G6X6QKMMR7VNDKOAQNPQFUCULAC3V7FO5TIGSGR2BI2YLVFTGJ",
 "assetCode":"AstroDollar"
 }
-assetCode - Asset to send to the distribution account(a short identifier of 1–12 alphanumeric).
+assetCode - Asset to send to the account(a short identifier of 1–12 alphanumeric).
 issuerId - Secret key of the issuing account that issued the asset.
 receiverId - Secret key of the distribution account that will hold the asset.
 */
 router.post('/create', function(req, res, next) {
-  logger.log('debug', '============================================================================');
-  logger.log('debug', 'CREATE ASSET');
+  logger.log('info', '============================================================================');
+  logger.log('info', 'CREATE ASSET');
   var issuingPublicKey;
 
   try {
@@ -50,10 +50,11 @@ router.post('/create', function(req, res, next) {
     issuingPublicKey = issuingKeys.publicKey();
     var assetObj = new StellarSdk.Asset(req.body.assetCode.trim(), issuingPublicKey); // creating an Asset object
     var receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
-    logger.log('debug', 'issuer PublicKey: ' + issuingPublicKey);
-    logger.log('debug', 'receiver PublicKey: ' + receivingKeys.publicKey());
-    logger.log('debug', 'getAssetType: ' + assetObj.getAssetType());
-    logger.log('debug', 'assetObj: ' + JSON.stringify(assetObj));
+    logger.log('info', 'Asset code: ' + req.body.assetCode.trim());
+    logger.log('info', 'issuer PublicKey: ' + issuingPublicKey);
+    logger.log('info', 'receiver PublicKey: ' + receivingKeys.publicKey());
+    logger.log('info', 'getAssetType: ' + assetObj.getAssetType());
+    logger.log('info', 'assetObj: ' + JSON.stringify(assetObj));
     
     server.accounts()
       .accountId(issuingPublicKey)
@@ -61,6 +62,10 @@ router.post('/create', function(req, res, next) {
       .then(function (accountResult) {
         server.loadAccount(receivingKeys.publicKey())
           .then(function(receiver){
+            logger.log('info', 'Balances for receiver account ' + receivingKeys.publicKey() + ':');
+            receiver.balances.forEach(function(balance) {
+              logger.log('info', 'Code: '+balance.asset_code+', Balance: '+balance.balance);
+            });
             var transaction = new StellarSdk.TransactionBuilder(receiver)
               // The `changeTrust` operation creates (or alters) a trustline
               // The `limit` parameter is optional
@@ -72,49 +77,49 @@ router.post('/create', function(req, res, next) {
             return server.submitTransaction(transaction);
           })
           .then(function(transactionResult){
-            logger.log('debug', 'Successfully created asset '+req.body.assetCode.trim());
+            logger.log('info', 'Successfully created asset '+req.body.assetCode.trim());
             res.json({'transactionResult': transactionResult});
           })
           .catch(function(error) {
             if (error.response && error.response.data) {
-              logger.log('debug', 'Error in loadAccount(receiver): ' + JSON.stringify(error.response.data));
+              logger.log('error', 'Error in loadAccount(receiver) from #assets/create: ' + JSON.stringify(error.response.data));
               if (error.response.status == 404) {
                 res.json({'error': "Recipient Account doesn't exist or inactivated."});
               } else {
                 res.json({'error': error.response.data});
               }
             } else {
-              logger.log('debug', 'Error in loadAccount(receiver): ' + error.toString());
+              logger.log('error', 'Error in loadAccount(receiver) from #assets/create: ' + error.toString());
               res.json({'error': error.toString()});
             }
           });
       })
       .catch(function(error) {
         if (error.response && error.response.data) {
-          logger.log('debug', 'Error in loadAccount(issuer): ' + JSON.stringify(error.response.data));
+          logger.log('error', 'Error in loadAccount(issuer) from #assets/create: ' + JSON.stringify(error.response.data));
           if (error.response.status == 404) {
             res.json({'error': "Issuing Account doesn't exist or inactivated."});
           } else {
             res.json({'error': error.response.data});
           }
         } else {
-          logger.log('debug', 'Error in loadAccount(issuer): ' + error.toString());
+          logger.log('error', 'Error in loadAccount(issuer) from #assets/create: ' + error.toString());
           res.json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      logger.log('debug', 'Error A: ' + JSON.stringify(error.response.data));
+      logger.log('error', 'Error A in #assets/create: ' + JSON.stringify(error.response.data));
       res.status(400).json({'error': error.response.data});
     } else {
-      logger.log('debug', 'Error B: ' + error.toString());
+      logger.log('error', 'Error A in #assets/create: ' + error.toString());
       res.status(400).json({'error': error.toString()});
     }
   }
 });
 
 /*
-Example data:
+Issuing asset
 Method: POST
 Headers: Content-type: application/json
 Body:
@@ -126,16 +131,14 @@ Body:
 }
 assetCode - Asset to send to the destination account(a short identifier of 1–12 alphanumeric).
 issuerId – Secret key of the issuing account that issued the asset.
-receiverId - Account address that receives the payment(Secret Key).
+receiverId - Account address that receives the payment(Secret Key). This is the Distribution account.
 amount - Amount of the aforementioned asset to send.
 */
-
-// issuing an asset
 router.post('/issue', function(req, res, next) {
-  logger.log('debug', '============================================================================');
-  logger.log('debug', 'ISSUE ASSET');
+  logger.log('info', '============================================================================');
+  logger.log('info', 'ISSUE ASSET');
   var issuingKeys;  // issuing account
-  var receivingKeys;  // distribution account that holds any assets
+  var receivingKeys;  // distribution account that holds any assets like ASTRODOLLARS
   var issuingPublicKey;
   var issuerSecretKey;
   var receiverPublicKey;
@@ -169,8 +172,10 @@ router.post('/issue', function(req, res, next) {
     issuingPublicKey = issuingKeys.publicKey();
     receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
     receiverPublicKey = receivingKeys.publicKey();
-    logger.log('debug', 'issuer PublicKey: ' + issuingPublicKey);
-    logger.log('debug', 'receiver PublicKey: ' + receiverPublicKey);
+    logger.log('info', 'Asset code: ' + assetCodeParam);
+    logger.log('info', 'amount: ' + assetAmtParam);
+    logger.log('info', 'issuer PublicKey: ' + issuingPublicKey);
+    logger.log('info', 'receiver PublicKey: ' + receiverPublicKey);
     var assetObj = new StellarSdk.Asset(assetCodeParam, issuingPublicKey); // Create an object to represent the new asset
     var objErr;
 
@@ -186,30 +191,31 @@ router.post('/issue', function(req, res, next) {
                      balance.asset_issuer === issuingPublicKey;
             });
             objErr = {};
-            logger.log('debug', 'Is trusted: ' + trusted);
+            logger.log('info', 'Is trusted: ' + trusted);
             if (trusted) {
               receiver.balances.forEach(function(balance) {
-                logger.log('debug', 'Code: '+balance.asset_code+', Type: '+balance.asset_type+', Balance: '+balance.balance);
+                logger.log('info', 'Code: '+balance.asset_code+', Balance: '+balance.balance);
                 if (balance.asset_code === assetCodeParam) {
                   if (balance.balance >= balance.limit || (assetAmtParam > balance.limit) ) {
                     objErr.error = 'Balance limit exceed';
                     return objErr;
-                  } else {
-                    var transaction = new StellarSdk.TransactionBuilder(receiver)
-                      // The `changeTrust` operation creates (or alters) a trustline
-                      // The `limit` parameter is optional
-                      .addOperation(StellarSdk.Operation.changeTrust({
-                        asset: assetObj
-                      }))
-                      .addOperation(StellarSdk.Operation.setOptions({
-                        setFlags: StellarSdk.AuthRevocableFlag | StellarSdk.AuthRequiredFlag
-                      }))
-                      .build();
-                    transaction.sign(receivingKeys);
-                    return server.submitTransaction(transaction);
                   }
                 }
               });
+              if (objErr.error === undefined) {
+                var transaction = new StellarSdk.TransactionBuilder(receiver)
+                  // The `changeTrust` operation creates (or alters) a trustline
+                  // The `limit` parameter is optional
+                  .addOperation(StellarSdk.Operation.changeTrust({
+                    asset: assetObj
+                  }))
+                  .addOperation(StellarSdk.Operation.setOptions({
+                    setFlags: StellarSdk.AuthRevocableFlag | StellarSdk.AuthRequiredFlag
+                  }))
+                  .build();
+                transaction.sign(receivingKeys);
+                return server.submitTransaction(transaction);
+              }
             }
           })
           // Second, the issuing account sends a payment/transfer operation using the asset
@@ -232,49 +238,49 @@ router.post('/issue', function(req, res, next) {
             }
           })
           .then(function(transactionResult){
+            logger.log('info', 'Successfully issue with assetCode: ' + assetCodeParam + ', amount: ' + assetAmtParam);
             res.json({'transactionResult': transactionResult});
           })
           .catch(function(error) {
             if (objErr && objErr.error) {
-              logger.log('debug', 'objErr: ' + objErr.error);
+              logger.log('error', 'objErr from #assets/issue: ' + objErr.error);
               res.status(400).json({'error': objErr.error});
             }
             if (error.response && error.response.data) {
-              logger.log('debug', 'Error in loadAccount(receiverPublicKey) from #assets/issue: ' + JSON.stringify(error.response.data));
+              logger.log('error', 'Error in loadAccount(receiverPublicKey) from #assets/issue: ' + JSON.stringify(error.response.data));
               res.status(400).json({'error': error.response.data});
             } else {
-              logger.log('debug', 'Error in loadAccount(receiverPublicKey) from #assets/issue: ' + error.toString());
+              logger.log('error', 'Error in loadAccount(receiverPublicKey) from #assets/issue: ' + error.toString());
               res.status(400).json({'error': error.toString()});
             }
           });
       })
       .catch(function (error) {
         if (error.response && error.response.data) {
-          logger.log('debug', 'Error in loadAccount(issuingPublicKey) from #assets/issue: ' + JSON.stringify(error.response.data));
+          logger.log('error', 'Error in loadAccount(issuingPublicKey) from #assets/issue: ' + JSON.stringify(error.response.data));
           if (error.response.status == 404) {
             res.json({'error': "Issuing Account doesn't exist or inactivated."});
           } else {
             res.json({'error': error.response.data});
           }
         } else {
-          logger.log('debug', 'Error in loadAccount(issuingPublicKey) from #assets/issue: ' + error.toString());
+          logger.log('error', 'Error in loadAccount(issuingPublicKey) from #assets/issue: ' + error.toString());
           res.json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      logger.log('debug', 'Error A from #assets/issue: ' + JSON.stringify(error.response.data));
+      logger.log('error', 'Error A in #assets/issue: ' + JSON.stringify(error.response.data));
       res.status(400).json({'error': error.response.data});
     } else {
-      logger.log('debug', 'Error B from #assets/issue: ' +  error.toString());
+      logger.log('error', 'Error A in #assets/issue: ' +  error.toString());
       res.status(400).json({'error': error.toString()});
     }
   }
 });
 
-// transfer asset from one account to another account
 /*
-Example data:
+Transfer asset from one account to another account
 Method: POST
 Headers: Content-type: application/json
 Body:
@@ -282,18 +288,18 @@ Body:
 "assetCode":"ABC",
 "amount": "1",
 "issuerId":"SCSGGRV4M24KGJJ4GZYFJKJZADHO3632MY6ZF33A6FLRKPYKZ6ANCMPY",
-"from":"SCQSL3RUV3BLN7JXXFIQDE5F2PMVVLFUY3546HY3HG6LTUYHBAI7F32C",
-"to":"SDXPFHOZ7INZP2PKJ6GV6SOKNWZZ55HDBUUL3NSQMI7HICYMFXG2OST7" 
+"distributorId":"SCQSL3RUV3BLN7JXXFIQDE5F2PMVVLFUY3546HY3HG6LTUYHBAI7F32C",
+"receiverId":"SDXPFHOZ7INZP2PKJ6GV6SOKNWZZ55HDBUUL3NSQMI7HICYMFXG2OST7" 
 }
 issuerId – Secret key of the issuing account that issued the asset.
 assetCode - Asset to send to the receiver account(a short identifier of 1–12 alphanumeric).
 amount - Amount of the aforementioned asset to send.
-to - Account address(Secret key) that will receive the asset.
-from - Account address(Distributor account Secret key) that will send the asset to another account.
+receiverId - Account address(Secret key) that will receive the asset.
+distributorId - Account address(Distributor account Secret key) that will send the asset to another account.
 */
 router.post('/transfer', function(req, res, next) {
-  logger.log('debug', '============================================================================');
-  logger.log('debug', 'TRANSFER ASSET');
+  logger.log('info', '============================================================================');
+  logger.log('info', 'TRANSFER ASSET');
   var issuerPublicKey;
   var issuerSecretKey;
   var distributorSecretKey;
@@ -305,12 +311,12 @@ router.post('/transfer', function(req, res, next) {
       res.status(400).json({'error': 'Asset Issuer ID is required.'});
       return;
     }
-    if (!req.body.from || !req.body.from.trim()) {
-      res.status(400).json({'error': 'From is required.'});
+    if (!req.body.distributorId || !req.body.distributorId.trim()) {
+      res.status(400).json({'error': 'Distributor ID is required.'});
       return;
     }
-    if (!req.body.to || !req.body.to.trim()) {
-      res.status(400).json({'error': 'To is required.'});
+    if (!req.body.receiverId || !req.body.receiverId.trim()) {
+      res.status(400).json({'error': 'Receiver ID is required.'});
       return;
     }
     if (!req.body.assetCode || !req.body.assetCode.trim()) {
@@ -325,55 +331,62 @@ router.post('/transfer', function(req, res, next) {
       res.status(400).json({'error': 'Amount is required.'});
       return;
     }
+    if (req.body.distributorId.trim() === req.body.issuerId.trim()) {
+      res.status(400).json({'error': 'The Distributor ID cannot be the same with Issuer ID.'});
+      return;
+    }
     if (req.body.issuerId && (req.body.issuerId.trim() !== "")) {
       issuerSecretKey = req.body.issuerId.trim();
       issuingKey = StellarSdk.Keypair.fromSecret(issuerSecretKey);
       issuerPublicKey = issuingKey.publicKey();
     }
-    if (req.body.from && (req.body.from.trim() !== "")) {
-      distributorSecretKey = req.body.from.trim();
+    if (req.body.distributorId && (req.body.distributorId.trim() !== "")) {
+      distributorSecretKey = req.body.distributorId.trim();
       distributorKeys = StellarSdk.Keypair.fromSecret(distributorSecretKey);
       distributorPublicKey = distributorKeys.publicKey();
     }
-    if (req.body.to && (req.body.to.trim() !== "")) {
-      receivingKeys = StellarSdk.Keypair.fromSecret(req.body.to.trim());
+    if (req.body.receiverId && (req.body.receiverId.trim() !== "")) {
+      receivingKeys = StellarSdk.Keypair.fromSecret(req.body.receiverId.trim());
       receivingPublicKey = receivingKeys.publicKey();
     }
     var assetCodeParam = req.body.assetCode.trim();
     var transaction;
-    logger.log('debug', 'distributorPublicKey: ' + distributorPublicKey);
-    logger.log('debug', 'receiverPublicKey: ' + receivingPublicKey);
+    logger.log('info', 'Asset code: ' + assetCodeParam);
+    logger.log('info', 'amount: ' + assetAmtParam);
+    logger.log('info', 'issuerPublicKey: ' + issuerPublicKey);
+    logger.log('info', 'distributorPublicKey: ' + distributorPublicKey);
+    logger.log('info', 'receiverPublicKey: ' + receivingPublicKey);
     // First, check to make sure that the destination account exists.
     server.loadAccount(receivingPublicKey)
       // If the account is not found, surface a nicer error message for logging.
       .catch(StellarSdk.NotFoundError, function (error) {
-        logger.log('debug', 'The destination account ' + receivingPublicKey + ' does not exist!');
+        logger.log('info', 'The destination account ' + receivingPublicKey + ' does not exist!');
         res.status(400).json({'error': 'The destination account does not exist!'});
         throw new Error('The destination account does not exist!');
       })
       // If there was no error, load up-to-date information on your account.
-      .then(function() {
+      .then(function(receiver) {
+        logger.log('info', 'Balances for receiver account ' + receivingPublicKey + ':');
+        receiver.balances.forEach(function(balance) {
+          logger.log('info', 'Code: '+balance.asset_code+', Balance: '+balance.balance);
+        });
         return server.loadAccount(distributorPublicKey);
       })
       .then(function(distributorAccount) {
-        logger.log('debug','Balances for distributor account: ' + distributorPublicKey);
+        logger.log('info','Balances for distributor account ' + distributorPublicKey + ':');
         distributorAccount.balances.forEach(function(balance) {
-          logger.log('debug', 'Code:'+balance.asset_code+', Type:'+balance.asset_type+', Balance:'+balance.balance);
+          logger.log('info', 'Code: '+balance.asset_code+', Balance: '+balance.balance);
         });
         var trusted = distributorAccount.balances.some(function(balance) { // lets validate the account
           return balance.asset_code === assetCodeParam &&
                  balance.asset_issuer === issuerPublicKey;
         });
         objErr = {};
-        logger.log('debug', 'Is trusted: ' + trusted);
-        // Create an object to represent the new asset
+        logger.log('info', 'Is trusted: ' + trusted);
         var assetObj = new StellarSdk.Asset(assetCodeParam, issuerPublicKey);
-        // Start building the transaction.
         transaction = new StellarSdk.TransactionBuilder(distributorAccount)
           .addOperation(StellarSdk.Operation.payment({
             destination: receivingPublicKey,
-            // Because Stellar allows transaction in many currencies, you must
-            // specify the asset type. The special "native" asset represents Lumens.
             asset: assetObj,
             amount: assetAmtParam
           }))
@@ -386,23 +399,31 @@ router.post('/transfer', function(req, res, next) {
         return server.submitTransaction(transaction);
       })
       .then(function(transactionResult) {
+        logger.log('info', 'Successfully moved asset ' + assetCodeParam + ' from ' + distributorPublicKey + ' to ' + receivingPublicKey);
         res.json({'transactionResult': transactionResult});
       })
       .catch(function(error) {
+        // if error code = op_no_trust, the receiver don't have a trustline to issuer
         if (error.response && error.response.data) {
-          logger.log('debug', 'Error A from #assets/transfer: ' + JSON.stringify(error.response.data));
-          res.status(400).json({'error': error.response.data});
+          var err = error.response.data;
+          var errOp = err['extras']['result_codes']['operations'];
+          logger.log('error', 'Error A in #assets/transfer: ' + JSON.stringify(error.response.data));
+          if (_.contains(errOp, 'op_no_trust')) {
+            res.status(400).json({'error': 'Receiver ID don\'t have a trustline from the issuing account.'});
+          } else {
+            res.status(400).json({'error': error.response.data});
+          }
         } else {
-          logger.log('debug', 'Error B from #assets/transfer: ' + error.toString());
+          logger.log('error', 'Error A in #assets/transfer: ' + error.toString());
           res.status(400).json({'error': error.toString()});
         }
       });
   } catch(error) {
     if (error.response && error.response.data) {
-      logger.log('debug', 'Error C from #assets/transfer: ' + JSON.stringify(error.response.data));
+      logger.log('error', 'Error B in #assets/transfer: ' + JSON.stringify(error.response.data));
       res.status(400).json({'error': error.response.data});
     } else {
-      logger.log('debug', 'Error D from #assets/transfer: ' +  error.toString());
+      logger.log('error', 'Error B in #assets/transfer: ' +  error.toString());
       res.status(400).json({'error': error.toString()});
     }
   }

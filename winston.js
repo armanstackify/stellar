@@ -1,6 +1,7 @@
 var appRoot = require('app-root-path');
 var winston = require('winston');
 var moment = require('moment');
+var config = require('./settings');
 var MESSAGE = Symbol.for('message');
 var jsonFormatter = function(logEntry) {
   var base = { timestamp: moment().format('ddd MMM D, YYYY hh:mm:ss A') };
@@ -12,20 +13,19 @@ var jsonFormatter = function(logEntry) {
 // define the custom settings for each transport (file, console)
 var options = {
   file: {
-    level: 'debug',
+    level: 'verbose',
     filename: `${appRoot}/logs/app.log`,
     handleExceptions: true,
     json: true,
     maxsize: 5242880, // 5MB
-    maxFiles: 5,
-    colorize: false,
-    silent: false
+    maxFiles: 1,
+    colorize: false
   },
   console: {
     level: 'info',
     handleExceptions: true,
     json: false,
-    colorize: true,
+    colorize: true
   },
 };
 
@@ -46,6 +46,5 @@ logger.stream = {
     logger.info(message);
   },
 };
-
 
 module.exports = logger;

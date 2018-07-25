@@ -42,6 +42,7 @@ router.post('/create', function(req, res, next) {
       res.status(400).json({'error': 'Issuer ID is required.'});
       return;
     }
+    // the recipient account or distribution account that hold the asset
     if (!req.body.receiverId || !req.body.receiverId.trim()) {
       res.status(400).json({'error': 'Receiver ID is required.'});
       return;
@@ -142,7 +143,6 @@ router.post('/issue', function(req, res, next) {
   var issuingPublicKey;
   var issuerSecretKey;
   var receiverPublicKey;
-
   try {
     if (!req.body.issuerId || !req.body.issuerId.trim()) {
       res.status(400).json({'error': 'Asset Issuer ID is required.'});
@@ -157,7 +157,7 @@ router.post('/issue', function(req, res, next) {
       return;
     }
     if (req.body.amount && (typeof (req.body.amount))=="number") {
-      res.status(400).json({'error': 'Amount must be in string format with 7 decimal places.'});
+      res.status(400).json({'error': 'Amount must be in string format with 7 decimal digits.'});
       return;
     }
     if (!req.body.amount || !req.body.amount.trim()) {
@@ -324,7 +324,7 @@ router.post('/transfer', function(req, res, next) {
       return;
     }
     if (req.body.amount && (typeof (req.body.amount))=="number") {
-      res.status(400).json({'error': 'Amount must be in string format with 7 decimal places.'});
+      res.status(400).json({'error': 'Amount must be in string format with 7 decimal digits.'});
       return;
     }
     if (!req.body.amount || !req.body.amount.trim()) {
@@ -350,7 +350,6 @@ router.post('/transfer', function(req, res, next) {
       receivingPublicKey = receivingKeys.publicKey();
     }
     var assetCodeParam = req.body.assetCode.trim();
-    var transaction;
     logger.log('info', 'Asset code: ' + assetCodeParam);
     logger.log('info', 'amount: ' + assetAmtParam);
     logger.log('info', 'issuerPublicKey: ' + issuerPublicKey);
@@ -361,8 +360,8 @@ router.post('/transfer', function(req, res, next) {
       // If the account is not found, surface a nicer error message for logging.
       .catch(StellarSdk.NotFoundError, function (error) {
         logger.log('info', 'The destination account ' + receivingPublicKey + ' does not exist!');
-        res.status(400).json({'error': 'The destination account does not exist!'});
-        throw new Error('The destination account does not exist!');
+        res.status(400).json({'error': 'The destination account ' + receivingPublicKey + ' does not exist!'});
+        throw new Error('The destination account ' + receivingPublicKey + ' does not exist!');
       })
       // If there was no error, load up-to-date information on your account.
       .then(function(receiver) {
@@ -384,7 +383,7 @@ router.post('/transfer', function(req, res, next) {
         objErr = {};
         logger.log('info', 'Is trusted: ' + trusted);
         var assetObj = new StellarSdk.Asset(assetCodeParam, issuerPublicKey);
-        transaction = new StellarSdk.TransactionBuilder(distributorAccount)
+        var transaction = new StellarSdk.TransactionBuilder(distributorAccount)
           .addOperation(StellarSdk.Operation.payment({
             destination: receivingPublicKey,
             asset: assetObj,

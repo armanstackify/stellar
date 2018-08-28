@@ -1,4 +1,4 @@
-# Nodejs API
+# Nodejs Stellar Horizon API
 
 #### Requirements:
 node.js v8.10 or latest   
@@ -11,4 +11,5 @@ $ npm install
 $ npm run dev   
 
 #### How to run in Production mode:
+Make sure that there is an active source account(in XLM)   
 $ npm start   

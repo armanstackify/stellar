@@ -16,6 +16,7 @@ if (config.stellarNetwork === "test") {
 Asset creation
 Method: POST
 Headers: Content-type: application/json
+For example:
 Body:
 {
 "issuerId":"SATVM4BDCM43CKO3U3OJKIJRXRN3J4YVGVESM7NIEZAUFCCN66UOHZKK",
@@ -32,7 +33,7 @@ router.post('/create', function(req, res, next) {
   var issuingPublicKey;
 
   try {
-    // assetCode: 1-12 alphanumberic chars. e.g., BTC, USD
+    // assetCode: 1-12 alphanumberic chars. e.g., BTC, USD, AstroDollar
     if (!req.body.assetCode || !req.body.assetCode.trim()) {
       res.status(400).json({'error': 'Asset Code is required.'});
       return;
@@ -56,7 +57,7 @@ router.post('/create', function(req, res, next) {
     logger.log('info', 'receiver PublicKey: ' + receivingKeys.publicKey());
     logger.log('info', 'getAssetType: ' + assetObj.getAssetType());
     logger.log('info', 'assetObj: ' + JSON.stringify(assetObj));
-    
+
     server.accounts()
       .accountId(issuingPublicKey)
       .call()
@@ -123,6 +124,7 @@ router.post('/create', function(req, res, next) {
 Issuing asset
 Method: POST
 Headers: Content-type: application/json
+For example:
 Body:
 {
 "issuerId":"SCTUKKPQNYOKG735BBAB7XZZW4JWOBBIE6PE6O4TH2FKV4QCFV7H6AVX",
@@ -157,7 +159,7 @@ router.post('/issue', function(req, res, next) {
       return;
     }
     if (req.body.amount && (typeof (req.body.amount))=="number") {
-      res.status(400).json({'error': 'Amount must be in string format with 7 decimal digits.'});
+      res.status(400).json({'error': 'Amount must be in string format and represent it a positive number and have at most 7 digits after the decimal'});
       return;
     }
     if (!req.body.amount || !req.body.amount.trim()) {
@@ -289,7 +291,7 @@ Body:
 "amount": "1",
 "issuerId":"SCSGGRV4M24KGJJ4GZYFJKJZADHO3632MY6ZF33A6FLRKPYKZ6ANCMPY",
 "distributorId":"SCQSL3RUV3BLN7JXXFIQDE5F2PMVVLFUY3546HY3HG6LTUYHBAI7F32C",
-"receiverId":"SDXPFHOZ7INZP2PKJ6GV6SOKNWZZ55HDBUUL3NSQMI7HICYMFXG2OST7" 
+"receiverId":"SDXPFHOZ7INZP2PKJ6GV6SOKNWZZ55HDBUUL3NSQMI7HICYMFXG2OST7"
 }
 issuerId – Secret key of the issuing account that issued the asset.
 assetCode - Asset to send to the receiver account(a short identifier of 1–12 alphanumeric).
@@ -324,7 +326,7 @@ router.post('/transfer', function(req, res, next) {
       return;
     }
     if (req.body.amount && (typeof (req.body.amount))=="number") {
-      res.status(400).json({'error': 'Amount must be in string format with 7 decimal digits.'});
+      res.status(400).json({'error': 'Amount must be in string format and represent it a positive number and have at most 7 digits after the decimal'});
       return;
     }
     if (!req.body.amount || !req.body.amount.trim()) {
